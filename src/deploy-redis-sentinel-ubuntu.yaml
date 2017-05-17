@@ -1,0 +1,84 @@
+heat_template_version: 2015-04-30
+description: Installs Redis Sentinel
+
+parameters:
+
+  server_map:
+    type: json
+    description: Map of servers to be used with OS::Heat::SoftwareDeploymentGroup
+
+  http_proxy:
+    type: string
+    description: "HTTP proxy URL"
+    default: ''
+
+  https_proxy:
+    type: string
+    description: "HTTPS proxy URL"
+    default: ''
+
+  no_proxy:
+    type: string
+    description: "Exceptions to proxy configuration"
+    default: ''
+
+  master_name:
+    type: string
+
+  master_address:
+    type: string
+
+  master_password:
+    type: string
+    hidden: true
+
+resources:
+
+  # SOFTWARE CONFIGS
+
+  install:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: { get_file: scripts/ubuntu/redis-sentinel/1_install.sh }
+
+  configure:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: { get_file: scripts/ubuntu/redis-sentinel/2_configure.sh }
+      inputs:
+        - name: MASTER_NAME
+        - name: MASTER_ADDRESS
+        - name: MASTER_PASSWORD
+
+  # SOFTWARE DEPLOYMENTS
+
+  deploy_install:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      config: { get_resource: install }
+      servers: { get_param: server_map }
+      signal_transport: HEAT_SIGNAL
+      input_values:
+        http_proxy: { get_param: http_proxy }
+        https_proxy: { get_param: https_proxy }
+        no_proxy: { get_param: no_proxy }
+
+  deploy_configure:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      config: { get_resource: configure }
+      servers: { get_param: server_map }
+      signal_transport: HEAT_SIGNAL
+      input_values:
+        http_proxy: { get_param: http_proxy }
+        https_proxy: { get_param: https_proxy }
+        no_proxy: { get_param: no_proxy }
+        MASTER_NAME: { get_param: master_name }
+        MASTER_ADDRESS: { get_param: master_address }
+        MASTER_PASSWORD: { get_param: master_password }
+    depends_on:
+      - deploy_install
+
+outputs:

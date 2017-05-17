@@ -1,0 +1,3 @@
+resource_registry:
+  "Evoila::Deployment::Redis": src/deploy-redis-ubuntu.yaml
+  "Evoila::Deployment::Redis::Sentinel": src/deploy-redis-sentinel-ubuntu.yaml

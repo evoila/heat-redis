@@ -1,0 +1,141 @@
+heat_template_version: 2015-04-30
+description: Installs Redis Cluster
+
+parameters:
+
+  server_map:
+    type: json
+    description: Map of servers to be used with OS::Heat::SoftwareDeploymentGroup
+
+  server_list:
+    type: comma_delimited_list
+    description: List of server IDs
+
+  server_names:
+    type: comma_delimited_list
+    description: List of server names
+
+  server_addresses:
+    type: comma_delimited_list
+    description: List of server addresses
+
+  http_proxy:
+    type: string
+    description: "HTTP proxy URL"
+    default: ''
+
+  https_proxy:
+    type: string
+    description: "HTTPS proxy URL"
+    default: ''
+
+  no_proxy:
+    type: string
+    description: "Exceptions to proxy configuration"
+    default: ''
+
+resources:
+
+  # SOFTWARE CONFIGS
+
+  install:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: { get_file: scripts/ubuntu/redis/1_install.sh }
+      inputs:
+        - name: VERSION
+
+  configure_system:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: { get_file: scripts/ubuntu/redis/2_configure-system.sh }
+
+  configure_master:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: { get_file: scripts/ubuntu/redis/3_configure-master.sh }
+      inputs:
+        - name: MASTER_PASSWORD
+
+  configure_slave:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: { get_file: scripts/ubuntu/redis/4_configure-slave.sh }
+      inputs:
+        - name: MASTER_HOSTNAME
+        - name: MASTER_ADDRESS
+        - name: MASTER_PASSWORD
+
+  # SOFTWARE DEPLOYMENTS
+
+  deploy_install:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      config: { get_resource: install }
+      servers: { get_param: server_map }
+      signal_transport: HEAT_SIGNAL
+      input_values:
+        http_proxy: { get_param: http_proxy }
+        https_proxy: { get_param: https_proxy }
+        no_proxy: { get_param: no_proxy }
+
+  deploy_configure_system:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      config: { get_resource: configure_system }
+      servers: { get_param: server_map }
+      signal_transport: HEAT_SIGNAL
+      input_values:
+        http_proxy: { get_param: http_proxy }
+        https_proxy: { get_param: https_proxy }
+        no_proxy: { get_param: no_proxy }
+    depends_on:
+      - deploy_install
+
+  master_password:
+    type: OS::Heat::RandomString
+
+  deploy_configure_master:
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      config: { get_resource: configure_master }
+      server: { get_param: [ server_list, 0 ] }
+      signal_transport: HEAT_SIGNAL
+      input_values:
+        http_proxy: { get_param: http_proxy }
+        https_proxy: { get_param: https_proxy }
+        no_proxy: { get_param: no_proxy }
+        MASTER_PASSWORD: { get_resource: master_password }
+    depends_on:
+      - deploy_configure_system
+
+  deploy_configure_slave:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      config: { get_resource: configure_slave }
+      servers: { get_param: server_map }
+      signal_transport: HEAT_SIGNAL
+      input_values:
+        http_proxy: { get_param: http_proxy }
+        https_proxy: { get_param: https_proxy }
+        no_proxy: { get_param: no_proxy }
+        MASTER_HOSTNAME: { get_param: [ server_names, 0 ] }
+        MASTER_ADDRESS: { get_param: [ server_addresses, 0 ] }
+        MASTER_PASSWORD: { get_resource: master_password }
+    depends_on:
+      - deploy_configure_master
+
+outputs:
+
+  master_name:
+    value: { get_param: [ server_names, 0 ] }
+
+  master_address:
+    value: { get_param: [ server_addresses, 0 ] }
+
+  master_password:
+    value: { get_resource: master_password }
